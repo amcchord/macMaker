@@ -3,8 +3,14 @@
 # Mac OS 9 Emulation System Installer
 # Idempotent installation script for Debian
 #
-# Usage:
+# Usage (with sudo installed):
 #   curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash
+#
+# Usage (without sudo, as root):
+#   curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | bash
+#
+# Usage (minimal system without curl):
+#   wget -qO- https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | bash
 #
 # This script can be run multiple times safely:
 #   - Fresh install: Full setup with all components
@@ -50,16 +56,39 @@ log_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
+# Check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
 # ============================================================================
 # SECTION 0: Pre-flight checks
 # ============================================================================
 check_root() {
     if [ "$EUID" -ne 0 ]; then
-        log_error "Please run as root (use sudo)"
+        log_error "Please run as root"
         echo ""
-        echo "Usage: curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash"
+        echo "If you have sudo installed:"
+        echo "  curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash"
+        echo ""
+        echo "If you don't have sudo (log in as root first):"
+        echo "  curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | bash"
+        echo ""
+        echo "If you don't have curl (use wget instead):"
+        echo "  wget -qO- https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | bash"
         exit 1
     fi
+}
+
+check_apt() {
+    log_step "Checking package manager..."
+    
+    if ! command_exists apt-get; then
+        log_error "apt-get is not available. This installer requires a Debian-based system with apt."
+        exit 1
+    fi
+    
+    log_info "apt-get is available"
 }
 
 check_debian() {
@@ -118,37 +147,244 @@ detect_install_mode() {
 }
 
 # ============================================================================
+# SECTION 0.5: Bootstrap essential packages
+# ============================================================================
+bootstrap_essential_packages() {
+    log_step "Bootstrapping essential packages for minimal systems..."
+    
+    # Update package lists first
+    apt-get update || {
+        log_error "Failed to update package lists. Check your network connection."
+        exit 1
+    }
+    
+    # Install absolutely essential packages that may be missing on minimal systems
+    # These are needed before we can proceed with the rest of the installation
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        apt-utils \
+        ca-certificates \
+        curl \
+        wget \
+        gnupg \
+        sudo \
+        2>/dev/null || true
+    
+    log_info "Essential packages bootstrapped"
+}
+
+# ============================================================================
 # SECTION 1: Package Installation
 # ============================================================================
 install_packages() {
     log_step "Installing required packages..."
     
-    # Update package lists
+    # Update package lists again to ensure we have latest info
     apt-get update
     
-    # Install packages - apt-get install is idempotent
+    # Fix any broken packages first
+    DEBIAN_FRONTEND=noninteractive apt-get install -f -y || true
+    
+    # -------------------------------------------------------------------------
+    # Core system utilities (often missing on minimal/container systems)
+    # -------------------------------------------------------------------------
+    log_info "Installing core system utilities..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        qemu-system-ppc \
+        apt-utils \
+        ca-certificates \
+        gnupg \
+        sudo \
+        procps \
+        coreutils \
+        util-linux \
+        adduser \
+        passwd \
+        hostname \
+        iproute2 \
+        iputils-ping \
+        dbus \
+        systemd \
+        systemd-sysv \
+        init-system-helpers \
+        kmod \
+        udev \
+        lsb-release \
+        locales \
+        2>/dev/null || log_warn "Some core utilities may already be installed or unavailable"
+    
+    # -------------------------------------------------------------------------
+    # Networking utilities
+    # -------------------------------------------------------------------------
+    log_info "Installing networking utilities..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        curl \
+        wget \
+        net-tools \
+        openssh-client \
+        2>/dev/null || log_warn "Some networking utilities may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Development and archive tools
+    # -------------------------------------------------------------------------
+    log_info "Installing development and archive tools..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
         git \
-        xorg \
-        openbox \
-        plymouth \
-        plymouth-themes \
+        unzip \
+        zip \
+        tar \
+        gzip \
+        bzip2 \
+        xz-utils \
+        file \
+        2>/dev/null || log_warn "Some archive tools may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Python and Flask for web interface
+    # -------------------------------------------------------------------------
+    log_info "Installing Python and web framework..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        python3 \
+        python3-minimal \
+        python3-pip \
+        python3-venv \
         python3-flask \
         python3-pillow \
-        unzip \
-        wget \
-        curl \
+        python3-setuptools \
+        2>/dev/null || log_warn "Some Python packages may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # QEMU emulator (the core of the project)
+    # -------------------------------------------------------------------------
+    log_info "Installing QEMU emulator..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        qemu-system-ppc \
+        qemu-utils \
+        2>/dev/null || {
+            log_error "Failed to install QEMU. This is required for the emulator."
+            exit 1
+        }
+    
+    # -------------------------------------------------------------------------
+    # X.org display server and related
+    # -------------------------------------------------------------------------
+    log_info "Installing X.org display server..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        xorg \
+        xserver-xorg \
+        xserver-xorg-core \
+        xserver-xorg-input-all \
+        xserver-xorg-video-all \
         xinit \
         x11-xserver-utils \
+        x11-utils \
+        x11-common \
+        xauth \
+        xterm \
+        2>/dev/null || log_warn "Some X.org packages may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Window manager and desktop utilities
+    # -------------------------------------------------------------------------
+    log_info "Installing window manager and desktop utilities..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        openbox \
+        unclutter \
         xdotool \
+        2>/dev/null || log_warn "Some desktop utilities may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Image processing (for screenshots)
+    # -------------------------------------------------------------------------
+    log_info "Installing image processing tools..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
         netpbm \
         imagemagick \
-        socat \
-        unclutter \
-        sudo
+        2>/dev/null || log_warn "Some image tools may already be installed"
     
-    log_info "Packages installed successfully"
+    # -------------------------------------------------------------------------
+    # Plymouth for boot splash
+    # -------------------------------------------------------------------------
+    log_info "Installing Plymouth boot splash..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        plymouth \
+        plymouth-themes \
+        2>/dev/null || log_warn "Plymouth may not be available on this system"
+    
+    # -------------------------------------------------------------------------
+    # Additional utilities
+    # -------------------------------------------------------------------------
+    log_info "Installing additional utilities..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        socat \
+        bc \
+        less \
+        nano \
+        2>/dev/null || log_warn "Some additional utilities may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Kernel and boot utilities
+    # -------------------------------------------------------------------------
+    log_info "Installing kernel and boot utilities..."
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        initramfs-tools \
+        linux-base \
+        2>/dev/null || log_warn "Some boot utilities may already be installed"
+    
+    # -------------------------------------------------------------------------
+    # Grub bootloader (if applicable)
+    # -------------------------------------------------------------------------
+    if [ -d /boot/grub ] || [ -d /boot/grub2 ]; then
+        log_info "Installing GRUB utilities..."
+        DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            grub-common \
+            grub2-common \
+            2>/dev/null || log_warn "GRUB utilities may already be installed"
+    fi
+    
+    # Clean up apt cache to free space
+    apt-get clean
+    
+    # Verify critical commands are available
+    log_info "Verifying critical packages..."
+    MISSING_CMDS=""
+    
+    if ! command_exists qemu-system-ppc; then
+        MISSING_CMDS="$MISSING_CMDS qemu-system-ppc"
+    fi
+    if ! command_exists git; then
+        MISSING_CMDS="$MISSING_CMDS git"
+    fi
+    if ! command_exists python3; then
+        MISSING_CMDS="$MISSING_CMDS python3"
+    fi
+    if ! command_exists startx; then
+        MISSING_CMDS="$MISSING_CMDS startx(xinit)"
+    fi
+    if ! command_exists openbox; then
+        MISSING_CMDS="$MISSING_CMDS openbox"
+    fi
+    if ! command_exists wget; then
+        MISSING_CMDS="$MISSING_CMDS wget"
+    fi
+    if ! command_exists curl; then
+        MISSING_CMDS="$MISSING_CMDS curl"
+    fi
+    if ! command_exists unzip; then
+        MISSING_CMDS="$MISSING_CMDS unzip"
+    fi
+    if ! command_exists useradd; then
+        MISSING_CMDS="$MISSING_CMDS useradd(passwd)"
+    fi
+    if ! command_exists systemctl; then
+        MISSING_CMDS="$MISSING_CMDS systemctl(systemd)"
+    fi
+    
+    if [ -n "$MISSING_CMDS" ]; then
+        log_error "The following critical commands are missing after installation:$MISSING_CMDS"
+        log_error "Please install them manually and re-run this script."
+        exit 1
+    fi
+    
+    log_info "All packages installed and verified successfully"
 }
 
 # ============================================================================
@@ -707,6 +943,7 @@ main() {
     
     # Pre-flight checks
     check_root
+    check_apt
     check_debian
     detect_install_mode
     
@@ -715,6 +952,10 @@ main() {
     echo "  Starting Installation"
     echo "========================================"
     echo ""
+    
+    # Bootstrap phase - install essential packages first
+    # This ensures minimal systems have what they need to proceed
+    bootstrap_essential_packages
     
     # Core installation steps
     install_packages
