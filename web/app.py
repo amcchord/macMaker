@@ -15,6 +15,7 @@ app = Flask(__name__)
 
 MACEMU_DIR = "/opt/macemu"
 CONFIG_FILE = f"{MACEMU_DIR}/config/qemu.conf"
+RUNTIME_STATUS_FILE = f"{MACEMU_DIR}/config/runtime-status"
 SCREENSHOT_DIR = f"{MACEMU_DIR}/screenshots"
 DISK_DIR = f"{MACEMU_DIR}/disk"
 ISO_DIR = f"{MACEMU_DIR}/iso"
@@ -46,6 +47,30 @@ def read_config():
                     config[key.strip()] = value.strip()
     
     return config
+
+def read_runtime_status():
+    """Read the runtime status file (written when emulator starts)"""
+    status = {}
+    if os.path.exists(RUNTIME_STATUS_FILE):
+        with open(RUNTIME_STATUS_FILE, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    key, value = line.split('=', 1)
+                    status[key.strip()] = value.strip()
+    return status
+
+def get_actual_resolution(running):
+    """Get the actual screen resolution - from runtime status if running, else from config"""
+    if running:
+        runtime = read_runtime_status()
+        width = runtime.get('RUNTIME_SCREEN_WIDTH')
+        height = runtime.get('RUNTIME_SCREEN_HEIGHT')
+        if width and height:
+            return width, height
+    # Fallback to config values
+    config = read_config()
+    return config.get('SCREEN_WIDTH', '1024'), config.get('SCREEN_HEIGHT', '768')
 
 def write_config(config):
     """Write the QEMU configuration file"""
@@ -177,7 +202,10 @@ def index():
     """Main dashboard"""
     config = read_config()
     running = is_emulator_running()
-    return render_template('index.html', config=config, running=running)
+    # Get actual running resolution (may differ from config due to auto-detection)
+    actual_width, actual_height = get_actual_resolution(running)
+    return render_template('index.html', config=config, running=running,
+                         actual_width=actual_width, actual_height=actual_height)
 
 @app.route('/config', methods=['GET', 'POST'])
 def config_page():
@@ -250,10 +278,15 @@ def api_status():
     running = is_emulator_running()
     pid = get_emulator_pid() if running else None
     config = read_config()
+    actual_width, actual_height = get_actual_resolution(running)
     return jsonify({
         'running': running,
         'pid': pid,
-        'config': config
+        'config': config,
+        'actual_resolution': {
+            'width': actual_width,
+            'height': actual_height
+        }
     })
 
 @app.route('/api/control/<action>', methods=['POST'])

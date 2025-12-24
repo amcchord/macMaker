@@ -37,6 +37,17 @@ if [ -n "$DISPLAY" ]; then
     fi
 fi
 
+# Write runtime status with actual resolution being used
+RUNTIME_STATUS_FILE="$MACEMU_DIR/config/runtime-status"
+cat > "$RUNTIME_STATUS_FILE" << EOF
+# Runtime status - auto-generated, do not edit
+# This file is written when the emulator starts
+RUNTIME_SCREEN_WIDTH=$SCREEN_WIDTH
+RUNTIME_SCREEN_HEIGHT=$SCREEN_HEIGHT
+RUNTIME_START_TIME=$(date -Iseconds)
+EOF
+echo "Wrote runtime status to $RUNTIME_STATUS_FILE"
+
 # Build QEMU command
 QEMU_CMD="qemu-system-ppc"
 QEMU_ARGS="-M mac99,via=pmu"

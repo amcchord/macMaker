@@ -109,7 +109,7 @@ class SmartSplash:
         ip_addr = get_ip_address()
         
         if ip_addr:
-            display_text = f"Web UI: http://{ip_addr}:5000"
+            display_text = f"Web UI: http://{ip_addr}"
         else:
             display_text = "Web UI available on local network"
         
