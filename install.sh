@@ -4,7 +4,7 @@
 # Idempotent installation script for Debian
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/master/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash
 #
 # This script can be run multiple times safely:
 #   - Fresh install: Full setup with all components
@@ -19,7 +19,7 @@ MACEMU_VERSION="1.0.0"
 MACEMU_DIR="/opt/macemu"
 MACEMU_USER="macemu"
 GITHUB_REPO="https://github.com/amcchord/macMaker.git"
-GITHUB_BRANCH="master"
+GITHUB_BRANCH="main"
 ISO_URL="https://mcchord.net/static/macos_921_ppc.iso"
 ROM_URL="https://archive.org/download/mac_rom_archive_-_as_of_8-19-2011/mac_rom_archive_-_as_of_8-19-2011.zip"
 DISK_SIZE="10G"
@@ -57,7 +57,7 @@ check_root() {
     if [ "$EUID" -ne 0 ]; then
         log_error "Please run as root (use sudo)"
         echo ""
-        echo "Usage: curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/master/install.sh | sudo bash"
+        echo "Usage: curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash"
         exit 1
     fi
 }
@@ -770,7 +770,7 @@ main() {
     fi
     
     echo "To update in the future, run:"
-    echo "  curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/master/install.sh | sudo bash"
+    echo "  curl -fsSL https://raw.githubusercontent.com/amcchord/macMaker/main/install.sh | sudo bash"
     echo ""
 }
 
