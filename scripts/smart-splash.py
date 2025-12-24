@@ -5,12 +5,67 @@ Monitors VNC to detect when OpenFirmware yellow screen passes
 """
 
 import tkinter as tk
+import tkinter.font as tkfont
 import threading
 import subprocess
 import time
 import signal
 import sys
 import os
+import socket
+
+def get_ip_address():
+    """Get the primary IP address of this machine"""
+    ip_addr = None
+    
+    # Method 1: Try to get IP by connecting to a remote address (doesn't actually connect)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.1)
+        # Connect to a public DNS - this doesn't send any data
+        s.connect(('8.8.8.8', 80))
+        ip_addr = s.getsockname()[0]
+        s.close()
+        if ip_addr and not ip_addr.startswith('127.'):
+            return ip_addr
+    except Exception:
+        pass
+    
+    # Method 2: Parse ip addr output
+    try:
+        result = subprocess.run(
+            ['ip', '-4', 'addr', 'show'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        for line in result.stdout.split('\n'):
+            if 'inet ' in line and '127.0.0.1' not in line:
+                # Extract IP from line like "    inet 192.168.1.100/24 brd ..."
+                parts = line.strip().split()
+                for i, part in enumerate(parts):
+                    if part == 'inet' and i + 1 < len(parts):
+                        ip_with_mask = parts[i + 1]
+                        ip_addr = ip_with_mask.split('/')[0]
+                        return ip_addr
+    except Exception:
+        pass
+    
+    # Method 3: Try hostname -I
+    try:
+        result = subprocess.run(
+            ['hostname', '-I'],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        ips = result.stdout.strip().split()
+        if ips:
+            return ips[0]
+    except Exception:
+        pass
+    
+    return None
 
 class SmartSplash:
     def __init__(self):
@@ -29,6 +84,9 @@ class SmartSplash:
         h = self.root.winfo_screenheight()
         self.root.geometry(f"{w}x{h}+0+0")
         
+        # Add IP address label at bottom center
+        self.add_ip_label(w, h)
+        
         # Keep on top
         self.lift_count = 0
         self.keep_on_top()
@@ -45,6 +103,35 @@ class SmartSplash:
         signal.signal(signal.SIGINT, lambda s,f: self.close())
         
         self.root.mainloop()
+    
+    def add_ip_label(self, screen_width, screen_height):
+        """Add IP address label at bottom center of screen"""
+        ip_addr = get_ip_address()
+        
+        if ip_addr:
+            display_text = f"Web UI: http://{ip_addr}:5000"
+        else:
+            display_text = "Web UI available on local network"
+        
+        # Create a frame at the bottom to hold the label
+        bottom_frame = tk.Frame(self.root, bg='#BDBDBD')
+        bottom_frame.place(relx=0.5, rely=0.95, anchor='center')
+        
+        # Use a clean font - try several options
+        try:
+            font = tkfont.Font(family='Helvetica', size=14, weight='normal')
+        except Exception:
+            font = ('TkDefaultFont', 14)
+        
+        # Dark grey text (#666666) on grey background (#BDBDBD)
+        ip_label = tk.Label(
+            bottom_frame,
+            text=display_text,
+            font=font,
+            fg='#666666',
+            bg='#BDBDBD'
+        )
+        ip_label.pack()
     
     def keep_on_top(self):
         """Keep window on top during QEMU startup"""
